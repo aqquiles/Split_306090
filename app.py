@@ -7,7 +7,7 @@ import io
 import zipfile
 
 # --- UI Setup: Brightcall Aesthetic ---
-st.set_page_config(page_title="RSC | Files", layout="wide")
+st.set_page_config(page_title="RSC | Split per lead's age", layout="wide")
 
 # Custom CSS for dark mode compatibility and table visibility
 st.markdown("""
@@ -28,7 +28,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("Files")
+st.title("Split per lead's age")
 
 # --- Sidebar Configuration ---
 with st.sidebar:
