@@ -15,6 +15,8 @@ st.markdown("""
     th { color: #4e73df !important; font-weight: bold !important; }
     .stButton>button { background-color: #4e73df; color: white; border-radius: 5px; border: none; width: 100%; }
     .stAlert { border-left: 5px solid #32CD32; }
+    /* Metric styling */
+    [data-testid="stMetricValue"] { color: #4e73df; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -74,14 +76,26 @@ if uploaded_file:
         df.loc[valid_mask, 'bucket'] = df.loc[valid_mask, 'age_days'].apply(get_bucket)
         df.loc[~valid_mask, 'bucket'] = "invalid_date"
 
-        # 3. Generate Initial Project Data
+        # --- NEW/RESTORED: 3. Top Metrics Row ---
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Rows", f"{len(df):,}")
+        col2.metric("Date Reference", today.strftime('%Y-%m-%d'))
+        col3.metric("Valid Dates", f"{valid_mask.sum():,}")
+        col4.metric("Delimiter", f"'{detected_sep}'")
+
+        # 4. Generate Initial Project Data & Stats
         buckets = ["0-30_days", "30-60_days", "60-90_days", "outside_0_90", "invalid_date"]
         all_chunks_data = []
+        stats_text = [f"Today: {today.strftime('%Y-%m-%d')}", f"Total rows: {len(df)}"]
         
         for b in buckets:
             group = df[df['bucket'] == b]
+            row_count = len(group)
+            num_chunks = math.ceil(row_count / initial_chunk_size) if row_count > 0 else 0
+            stats_text.append(f"{b.replace('_',' ')}: {row_count} rows, {num_chunks} chunk(s)")
+            
             if not group.empty:
-                for i in range(0, len(group), initial_chunk_size):
+                for i in range(0, row_count, initial_chunk_size):
                     chunk = group.iloc[i:i + initial_chunk_size]
                     chunk_num = (i // initial_chunk_size) + 1
                     name_parts = [project_prefix, b, f"chunk{chunk_num:03d}"]
@@ -93,26 +107,28 @@ if uploaded_file:
                         "Contacts": len(chunk),
                         "Bucket": b,
                         "Override Chunk Size": initial_chunk_size,
-                        "raw_data": chunk # Storing for second pass
+                        "raw_data": chunk
                     })
 
-        # 4. Interactive Table
-        st.subheader("Generated Projects")
-        st.info("Select rows below to further sub-split specific files with a custom chunk size.")
+        # --- RESTORED: 5. Summary Text Block ---
+        st.code("\n".join(stats_text), language="text")
+
+        # 6. Interactive Table
+        st.subheader("Project Files Management")
+        st.markdown("Select files to **sub-split** further by overriding their chunk size.")
         
-        # Use data_editor for selection and custom chunk input
         edited_df = st.data_editor(
             pd.DataFrame(all_chunks_data).drop(columns=['raw_data']),
             column_config={
-                "Select": st.column_config.CheckboxColumn(help="Select to sub-split this file further"),
-                "Override Chunk Size": st.column_config.NumberColumn(min_value=1, step=1000)
+                "Select": st.column_config.CheckboxColumn(label="Sub-Split?", help="Check to split this file even smaller"),
+                "Override Chunk Size": st.column_config.NumberColumn(label="New Chunk Size", min_value=1, step=1000)
             },
             disabled=["File Name", "Contacts", "Bucket"],
             hide_index=True,
             use_container_width=True
         )
 
-        # 5. Final Processing Logic
+        # 7. Final Processing Logic
         zip_buffer = io.BytesIO()
         final_file_count = 0
 
@@ -120,14 +136,12 @@ if uploaded_file:
             for idx, row in edited_df.iterrows():
                 original_chunk = all_chunks_data[idx]['raw_data']
                 
-                # If selected, sub-split based on the override value
                 if row['Select']:
                     sub_chunk_size = int(row['Override Chunk Size'])
                     for j in range(0, len(original_chunk), sub_chunk_size):
                         sub_chunk = original_chunk.iloc[j:j + sub_chunk_size].copy()
                         sub_name = f"{row['File Name']}_sub{(j//sub_chunk_size)+1:02d}"
                         
-                        # Apply Age Column Logic
                         cols_to_drop = ['bucket']
                         if not keep_age_col: cols_to_drop.append('age_days')
                         else: sub_chunk = sub_chunk.rename(columns={'age_days': 'lead_age_days'})
@@ -136,7 +150,6 @@ if uploaded_file:
                         zip_file.writestr(f"{sub_name}.csv", csv_data)
                         final_file_count += 1
                 else:
-                    # Normal processing (No sub-split)
                     final_chunk = original_chunk.copy()
                     cols_to_drop = ['bucket']
                     if not keep_age_col: cols_to_drop.append('age_days')
@@ -146,7 +159,7 @@ if uploaded_file:
                     zip_file.writestr(f"{row['File Name']}.csv", csv_data)
                     final_file_count += 1
 
-        st.success(f"Prepared {final_file_count} total files for download.")
+        st.success(f"Successfully processed {final_file_count} files.")
 
         st.download_button(
             label="Download split file (.zip)",
