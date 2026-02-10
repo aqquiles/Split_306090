@@ -30,8 +30,12 @@ with st.sidebar:
     chunk_size = st.number_input("Chunk Size", value=50000)
     
     st.divider()
+    st.subheader("Data Enhancements")
+    # New Toggle for adding the age column
+    keep_age_col = st.toggle("Add lead age column to output", value=False, help="Adds a 'lead_age_days' column to the exported CSVs.")
+    
+    st.divider()
     st.subheader("Data Parsing")
-    # Manual override toggle
     manual_delimiter = st.checkbox("Set delimiter manually", value=False)
     if manual_delimiter:
         delimiter_choice = st.selectbox("Select Delimiter", [",", ";", "|", "\\t"])
@@ -48,15 +52,14 @@ if uploaded_file:
         detected_sep = delimiter_choice
     else:
         try:
-            # Read sample for detection
             sample = uploaded_file.read(2048).decode('utf-8')
             uploaded_file.seek(0)
             dialect = csv.Sniffer().sniff(sample, delimiters=[',', ';', '|', '\t'])
             detected_sep = dialect.delimiter
         except Exception:
             st.error("⚠️ **Auto-detection failed.** We couldn't determine the delimiter for this file.")
-            st.warning("Please check the **'Set delimiter manually'** box in the sidebar and select the correct character (usually a comma or semicolon).")
-            st.stop() # Stop execution until user acts
+            st.warning("Please check the **'Set delimiter manually'** box in the sidebar.")
+            st.stop()
 
     # 2. Load Data
     try:
@@ -109,13 +112,21 @@ if uploaded_file:
                 
                 if row_count > 0:
                     for i in range(0, row_count, chunk_size):
-                        chunk = group.iloc[i:i + chunk_size]
+                        chunk = group.iloc[i:i + chunk_size].copy() # Copy to avoid slice warnings
                         chunk_num = (i//chunk_size) + 1
                         
                         name_parts = [project_prefix, b, f"chunk{chunk_num:03d}"]
                         chunk_name = "_".join([p for p in name_parts if p])
                         
-                        csv_data = chunk.drop(columns=['age_days', 'bucket'], errors='ignore').to_csv(index=False, sep=detected_sep)
+                        # Logic to keep or drop columns
+                        cols_to_drop = ['bucket']
+                        if not keep_age_col:
+                            cols_to_drop.append('age_days')
+                        else:
+                            # Rename for a cleaner output header
+                            chunk = chunk.rename(columns={'age_days': 'lead_age_days'})
+                        
+                        csv_data = chunk.drop(columns=cols_to_drop, errors='ignore').to_csv(index=False, sep=detected_sep)
                         zip_file.writestr(f"{chunk_name}.csv", csv_data)
                         
                         project_rows.append({
