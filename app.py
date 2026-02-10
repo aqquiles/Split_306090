@@ -16,7 +16,7 @@ st.markdown("""
     th { color: #4e73df !important; font-weight: bold !important; }
     .stButton>button { background-color: #4e73df; color: white; border-radius: 5px; border: none; width: 100%; }
     /* Error message styling */
-    .stAlert { border-left: 5px solid #ff4b4b; }
+    .stAlert { border-left: 5px solid #32CD32; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -25,7 +25,7 @@ st.title("Split per lead's age")
 # --- Sidebar Configuration ---
 with st.sidebar:
     st.header("Settings")
-    project_prefix = st.text_input("Project Name Prefix", value="", placeholder="e.g. Ashley")
+    project_prefix = st.text_input("Project Name Prefix", value="", placeholder="e.g. mrPBall")
     date_col = st.text_input("Date Column", value="joindate")
     chunk_size = st.number_input("Chunk Size", value=50000)
     
@@ -36,7 +36,7 @@ with st.sidebar:
     if manual_delimiter:
         delimiter_choice = st.selectbox("Select Delimiter", [",", ";", "|", "\\t"])
     else:
-        st.info("Auto-detection is ON")
+        st.info("Delimiter auto-detection is ON")
 
 uploaded_file = st.file_uploader("Upload CSV to Split", type="csv")
 
