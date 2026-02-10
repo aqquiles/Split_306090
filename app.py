@@ -15,7 +15,6 @@ st.markdown("""
     th { color: #4e73df !important; font-weight: bold !important; }
     .stButton>button { background-color: #4e73df; color: white; border-radius: 5px; border: none; width: 100%; }
     .stAlert { border-left: 5px solid #32CD32; }
-    /* Metric styling */
     [data-testid="stMetricValue"] { color: #4e73df; }
     </style>
     """, unsafe_allow_html=True)
@@ -36,9 +35,13 @@ with st.sidebar:
     st.divider()
     st.subheader("Data Parsing")
     manual_delimiter = st.checkbox("Set delimiter manually", value=False)
-    detected_sep = ","
+    
+    # Restored the status message logic
     if manual_delimiter:
         detected_sep = st.selectbox("Select Delimiter", [",", ";", "|", "\\t"])
+    else:
+        st.info("Delimiter auto-detection is ON")
+        detected_sep = "," # Default placeholder until file is uploaded
 
 uploaded_file = st.file_uploader("Upload CSV to Split", type="csv")
 
@@ -76,7 +79,7 @@ if uploaded_file:
         df.loc[valid_mask, 'bucket'] = df.loc[valid_mask, 'age_days'].apply(get_bucket)
         df.loc[~valid_mask, 'bucket'] = "invalid_date"
 
-        # --- NEW/RESTORED: 3. Top Metrics Row ---
+        # 3. Top Metrics Row
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Rows", f"{len(df):,}")
         col2.metric("Date Reference", today.strftime('%Y-%m-%d'))
@@ -110,7 +113,7 @@ if uploaded_file:
                         "raw_data": chunk
                     })
 
-        # --- RESTORED: 5. Summary Text Block ---
+        # 5. Summary Text Block
         st.code("\n".join(stats_text), language="text")
 
         # 6. Interactive Table
