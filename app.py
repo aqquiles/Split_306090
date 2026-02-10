@@ -12,10 +12,8 @@ st.set_page_config(page_title="RSC | Split per lead's age", layout="wide")
 
 st.markdown("""
     <style>
-    div[data-testid="stTable"] { background-color: transparent !important; }
     th { color: #4e73df !important; font-weight: bold !important; }
     .stButton>button { background-color: #4e73df; color: white; border-radius: 5px; border: none; width: 100%; }
-    /* Error message styling */
     .stAlert { border-left: 5px solid #32CD32; }
     </style>
     """, unsafe_allow_html=True)
@@ -27,48 +25,40 @@ with st.sidebar:
     st.header("Settings")
     project_prefix = st.text_input("Project Name Prefix", value="", placeholder="e.g. mrPBall")
     date_col = st.text_input("Date Column", value="joindate")
-    chunk_size = st.number_input("Chunk Size", value=50000)
+    initial_chunk_size = st.number_input("Global Chunk Size", value=50000)
     
     st.divider()
     st.subheader("Data Enhancements")
-    # New Toggle for adding the age column
-    keep_age_col = st.toggle("Add lead age column to output", value=False, help="Adds a 'lead_age_days' column to the exported CSVs.")
+    keep_age_col = st.toggle("Add lead age column to output", value=False)
     
     st.divider()
     st.subheader("Data Parsing")
     manual_delimiter = st.checkbox("Set delimiter manually", value=False)
+    detected_sep = ","
     if manual_delimiter:
-        delimiter_choice = st.selectbox("Select Delimiter", [",", ";", "|", "\\t"])
-    else:
-        st.info("Delimiter auto-detection is ON")
+        detected_sep = st.selectbox("Select Delimiter", [",", ";", "|", "\\t"])
 
 uploaded_file = st.file_uploader("Upload CSV to Split", type="csv")
 
 if uploaded_file:
-    detected_sep = None
-    
     # 1. Delimiter Logic
-    if manual_delimiter:
-        detected_sep = delimiter_choice
-    else:
+    if not manual_delimiter:
         try:
             sample = uploaded_file.read(2048).decode('utf-8')
             uploaded_file.seek(0)
             dialect = csv.Sniffer().sniff(sample, delimiters=[',', ';', '|', '\t'])
             detected_sep = dialect.delimiter
-        except Exception:
-            st.error("⚠️ **Auto-detection failed.** We couldn't determine the delimiter for this file.")
-            st.warning("Please check the **'Set delimiter manually'** box in the sidebar.")
+        except:
+            st.error("⚠️ Auto-detection failed. Set delimiter manually in sidebar.")
             st.stop()
 
-    # 2. Load Data
+    # 2. Load and Process Data
     try:
         df = pd.read_csv(uploaded_file, sep=detected_sep)
         today = pd.Timestamp(2026, 2, 10) 
         
-        # 3. Process Dates & Buckets
         if date_col not in df.columns:
-            st.error(f"Column '{date_col}' not found in the file. Current columns: {', '.join(df.columns)}")
+            st.error(f"Column '{date_col}' not found.")
             st.stop()
             
         df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
@@ -84,66 +74,79 @@ if uploaded_file:
         df.loc[valid_mask, 'bucket'] = df.loc[valid_mask, 'age_days'].apply(get_bucket)
         df.loc[~valid_mask, 'bucket'] = "invalid_date"
 
-        # 4. Top Metrics Row
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Rows", len(df))
-        col2.metric("Date Reference", today.strftime('%Y-%m-%d'))
-        col3.metric("Valid Dates", valid_mask.sum())
-        col4.metric("Delimiter", f"{detected_sep}")
-
-        # 5. Processing with Progress Bar
+        # 3. Generate Initial Project Data
         buckets = ["0-30_days", "30-60_days", "60-90_days", "outside_0_90", "invalid_date"]
-        stats_text = [f"Today: {today.strftime('%Y-%m-%d')}", f"Total rows: {len(df)}"]
+        all_chunks_data = []
         
-        project_rows = []
+        for b in buckets:
+            group = df[df['bucket'] == b]
+            if not group.empty:
+                for i in range(0, len(group), initial_chunk_size):
+                    chunk = group.iloc[i:i + initial_chunk_size]
+                    chunk_num = (i // initial_chunk_size) + 1
+                    name_parts = [project_prefix, b, f"chunk{chunk_num:03d}"]
+                    chunk_name = "_".join([p for p in name_parts if p])
+                    
+                    all_chunks_data.append({
+                        "Select": False,
+                        "File Name": chunk_name,
+                        "Contacts": len(chunk),
+                        "Bucket": b,
+                        "Override Chunk Size": initial_chunk_size,
+                        "raw_data": chunk # Storing for second pass
+                    })
+
+        # 4. Interactive Table
+        st.subheader("Generated Projects")
+        st.info("Select rows below to further sub-split specific files with a custom chunk size.")
+        
+        # Use data_editor for selection and custom chunk input
+        edited_df = st.data_editor(
+            pd.DataFrame(all_chunks_data).drop(columns=['raw_data']),
+            column_config={
+                "Select": st.column_config.CheckboxColumn(help="Select to sub-split this file further"),
+                "Override Chunk Size": st.column_config.NumberColumn(min_value=1, step=1000)
+            },
+            disabled=["File Name", "Contacts", "Bucket"],
+            hide_index=True,
+            use_container_width=True
+        )
+
+        # 5. Final Processing Logic
         zip_buffer = io.BytesIO()
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        final_file_count = 0
 
         with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-            for idx, b in enumerate(buckets):
-                status_text.text(f"Processing {b.replace('_',' ')}...")
-                group = df[df['bucket'] == b]
-                row_count = len(group)
-                num_chunks = math.ceil(row_count / chunk_size) if row_count > 0 else 0
+            for idx, row in edited_df.iterrows():
+                original_chunk = all_chunks_data[idx]['raw_data']
                 
-                stats_text.append(f"{b.replace('_',' ')}: {row_count} rows, {num_chunks} chunk(s)")
-                
-                if row_count > 0:
-                    for i in range(0, row_count, chunk_size):
-                        chunk = group.iloc[i:i + chunk_size].copy() # Copy to avoid slice warnings
-                        chunk_num = (i//chunk_size) + 1
+                # If selected, sub-split based on the override value
+                if row['Select']:
+                    sub_chunk_size = int(row['Override Chunk Size'])
+                    for j in range(0, len(original_chunk), sub_chunk_size):
+                        sub_chunk = original_chunk.iloc[j:j + sub_chunk_size].copy()
+                        sub_name = f"{row['File Name']}_sub{(j//sub_chunk_size)+1:02d}"
                         
-                        name_parts = [project_prefix, b, f"chunk{chunk_num:03d}"]
-                        chunk_name = "_".join([p for p in name_parts if p])
-                        
-                        # Logic to keep or drop columns
+                        # Apply Age Column Logic
                         cols_to_drop = ['bucket']
-                        if not keep_age_col:
-                            cols_to_drop.append('age_days')
-                        else:
-                            # Rename for a cleaner output header
-                            chunk = chunk.rename(columns={'age_days': 'lead_age_days'})
+                        if not keep_age_col: cols_to_drop.append('age_days')
+                        else: sub_chunk = sub_chunk.rename(columns={'age_days': 'lead_age_days'})
                         
-                        csv_data = chunk.drop(columns=cols_to_drop, errors='ignore').to_csv(index=False, sep=detected_sep)
-                        zip_file.writestr(f"{chunk_name}.csv", csv_data)
-                        
-                        project_rows.append({
-                            "File": chunk_name,
-                            "Project Type": "AI Agent",
-                            "Contacts Added": len(chunk),
-                            "Status": "Ready"
-                        })
-                
-                progress_bar.progress((idx + 1) / len(buckets))
-        
-        status_text.empty()
-        st.code("\n".join(stats_text), language="text")
+                        csv_data = sub_chunk.drop(columns=cols_to_drop, errors='ignore').to_csv(index=False, sep=detected_sep)
+                        zip_file.writestr(f"{sub_name}.csv", csv_data)
+                        final_file_count += 1
+                else:
+                    # Normal processing (No sub-split)
+                    final_chunk = original_chunk.copy()
+                    cols_to_drop = ['bucket']
+                    if not keep_age_col: cols_to_drop.append('age_days')
+                    else: final_chunk = final_chunk.rename(columns={'age_days': 'lead_age_days'})
+                    
+                    csv_data = final_chunk.drop(columns=cols_to_drop, errors='ignore').to_csv(index=False, sep=detected_sep)
+                    zip_file.writestr(f"{row['File Name']}.csv", csv_data)
+                    final_file_count += 1
 
-        if project_rows:
-            st.subheader("Project Files")
-            st.dataframe(pd.DataFrame(project_rows), use_container_width=True, hide_index=True)
+        st.success(f"Prepared {final_file_count} total files for download.")
 
         st.download_button(
             label="Download split file (.zip)",
@@ -153,4 +156,4 @@ if uploaded_file:
         )
         
     except Exception as e:
-        st.error(f"An error occurred while processing the file: {e}")
+        st.error(f"Error: {e}")
