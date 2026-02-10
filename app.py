@@ -107,8 +107,8 @@ if uploaded_file:
 
     # 6. Action Button
     st.download_button(
-        label="Add new project",
+        label="Download split file",
         data=zip_buffer.getvalue(),
-        file_name=f"SplitOutput_{today.strftime('%Y%m%d')}.zip",
+        file_name=f"Split_{today.strftime('%Y%m%d')}.zip",
         mime="application/zip"
     )
