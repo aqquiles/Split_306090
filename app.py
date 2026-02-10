@@ -12,10 +12,11 @@ st.set_page_config(page_title="RSC | Split per lead's age", layout="wide")
 
 st.markdown("""
     <style>
+    div[data-testid="stTable"] { background-color: transparent !important; }
     th { color: #4e73df !important; font-weight: bold !important; }
     .stButton>button { background-color: #4e73df; color: white; border-radius: 5px; border: none; width: 100%; }
+    /* Error message styling */
     .stAlert { border-left: 5px solid #32CD32; }
-    [data-testid="stMetricValue"] { color: #4e73df; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -30,7 +31,7 @@ with st.sidebar:
     
     st.divider()
     st.subheader("Data Enhancements")
-    keep_age_col = st.toggle("Add lead age column to output", value=False)
+    keep_age_col = st.toggle("Add lead age column to output", value=False, help="Adds a 'lead_age_days' column to the exported CSVs.")
     
     st.divider()
     st.subheader("Data Parsing")
