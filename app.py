@@ -89,7 +89,7 @@ if uploaded_file:
         col1.metric("Total Rows", len(df))
         col2.metric("Date Reference", today.strftime('%Y-%m-%d'))
         col3.metric("Valid Dates", valid_mask.sum())
-        col4.metric("Delimiter", f"'{detected_sep}'")
+        col4.metric("Delimiter", f"{detected_sep}")
 
         # 5. Processing with Progress Bar
         buckets = ["0-30_days", "30-60_days", "60-90_days", "outside_0_90", "invalid_date"]
