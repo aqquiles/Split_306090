@@ -7,7 +7,7 @@ import io
 import zipfile
 
 # --- UI Setup: Brightcall Aesthetic ---
-st.set_page_config(page_title="RSC | Projects", layout="wide")
+st.set_page_config(page_title="RSC | Files", layout="wide")
 
 # Custom CSS for dark mode compatibility and table visibility
 st.markdown("""
@@ -28,7 +28,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("Projects")
+st.title("Files")
 
 # --- Sidebar Configuration ---
 with st.sidebar:
@@ -92,7 +92,7 @@ if uploaded_file:
                     
                     # Add row to UI table
                     project_rows.append({
-                        "Project": chunk_name,
+                        "File": chunk_name,
                         "Project Type": "AI Agent",
                         "Contacts Added": len(chunk),
                         "Status": "Ready"
